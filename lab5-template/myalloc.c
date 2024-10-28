@@ -133,6 +133,30 @@ void* myalloc(size_t size) {
 }
 
 void myfree(void* ptr) {
-    node_t* header = (node_t*)((char*)ptr - sizeof(node_t));
+    node_t* header = (node_t*)((void*)ptr - sizeof(node_t));
     header->is_free = 1;
+
+    // coalescing
+
+    char changed = 1;
+    while (changed) {
+        changed = 0;
+        node_t* block = _arena_start;
+        while (block != NULL && block->fwd != NULL) {
+            if (block->is_free) {
+                if (block->fwd->is_free) {
+                    changed = 1;
+                    block->size += block->fwd->size + sizeof(node_t);
+                    node_t* temp = block->fwd;
+                    block->fwd = block->fwd->fwd;
+                    temp->fwd = NULL;
+                    temp->bwd = NULL;
+                    if (block->fwd != NULL) {
+                        block->fwd->bwd = block;
+                    }
+                }
+            }
+            block = block->fwd;
+        }
+    }
 }
