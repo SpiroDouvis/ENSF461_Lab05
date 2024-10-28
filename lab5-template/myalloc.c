@@ -6,6 +6,7 @@
 
 void* _arena_start;
 size_t _arena_size;
+int statusno = ERR_UNINITIALIZED;
 
 int myinit(size_t size) {
     printf("Initializing arena:\n");
@@ -60,4 +61,78 @@ int mydestroy() {
     _arena_size = 0;
 
     return 0; // Return 0 to indicate success
+}
+
+void* myalloc(size_t size) {
+    if (_arena_start == NULL) {
+        statusno = ERR_UNINITIALIZED;
+        return NULL;
+    }
+
+    node_t* block = (node_t*)_arena_start;
+    if (block->size == 0) {
+        block->size = _arena_size - sizeof(node_t);
+        block->is_free = 1;
+        block->fwd = NULL;
+        block->bwd = NULL;
+    }
+
+    if (size <= 0) {
+        return NULL;
+    }
+    if (_arena_size == 0) {
+        statusno = ERR_UNINITIALIZED;
+        return NULL;
+    }
+    if (size + sizeof(node_t) > _arena_size) {
+        statusno = ERR_OUT_OF_MEMORY;
+        return NULL;
+    }
+
+    node_t* prev = NULL;
+
+    while (block != NULL && (block->size < size || block->is_free == 0)) {
+        prev = block;
+        block = block->fwd;
+    }
+    if (block == NULL) {
+        if ((char*) prev + prev->size + size + sizeof(node_t) < (char*) _arena_start + _arena_size) {
+            block = (node_t*) ((char*) prev + prev->size);
+            block->size = size;
+            block->is_free = 0;
+            block->fwd = NULL;
+            block->bwd = prev;
+            prev->fwd = block;
+            statusno = 0;
+            return (void*) ((char*) block + sizeof(node_t));
+        } else {
+            statusno = ERR_OUT_OF_MEMORY;
+            return NULL;
+        }
+    }
+    else {
+        if (block->size > size + sizeof(node_t)) {
+            node_t* new_block = (node_t*)((char*)block + sizeof(node_t) + size);
+            new_block->size = block->size - size - sizeof(node_t);
+            new_block->is_free = 1;
+            new_block->fwd = block->fwd;
+            new_block->bwd = block;
+
+            if (block->fwd != NULL) {
+            block->fwd->bwd = new_block;
+            }
+
+            block->fwd = new_block;
+            block->size = size;
+        }
+
+        block->is_free = 0;
+        statusno = 0;
+        return (void*)((char*)block + sizeof(node_t));
+    }
+}
+
+void myfree(void* ptr) {
+    node_t* header = (node_t*)((char*)ptr - sizeof(node_t));
+    header->is_free = 1;
 }
